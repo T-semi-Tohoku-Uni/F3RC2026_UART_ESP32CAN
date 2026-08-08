@@ -1,0 +1,2 @@
+# F3RC2026_UART_ESP32toCAN
+ESP32と新can基板をUARTでつなぐ
