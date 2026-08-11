@@ -91,8 +91,9 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 		if(datapos>=9){
 			if((data[8]|0xfb) == 0xfb){
 				for (int i = 0; i < 8; i++){
-					printf("%d\r\n", TxData1[i]);
+					printf("%d\r\n", data[i]);
 				}
+				datapos = -1;
 			}else if((data[8]|0xfb) == 0xff){
 				//printf("Emergency");
 				Emergencystate=1;
