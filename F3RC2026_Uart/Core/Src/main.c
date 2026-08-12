@@ -88,7 +88,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 		}else if(datapos>=0){
 			data[datapos++]=buffer[0];
 		}
-		if(datapos>=9){
+		if(datapos>=8){
 			if((data[8]|0xfb) == 0xfb){
 				for (int i = 0; i < 8; i++){
 					printf("%d\r\n", data[i]);
