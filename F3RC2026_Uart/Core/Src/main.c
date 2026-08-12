@@ -78,38 +78,43 @@ int _write(int file, char *ptr, int len)
   HAL_UART_Transmit(&huart2,(uint8_t *)ptr,len,10);
    return len;
 }
-
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
-    if(Emergencystate ==0){
-		if(buffer[0] == 0xff){
-			datapos=0;
-			//Emergencyreset=0;
-		}else if(datapos>=0){
-			data[datapos++]=buffer[0];
-		}
-		if(datapos>=8){
-			if((data[8]|0xfb) == 0xfb){
-				for (int i = 0; i < 8; i++){
-					printf("%d\r\n", data[i]);
-				}
-				datapos = -1;
-			}else if((data[8]|0xfb) == 0xff){
-				//printf("Emergency");
-				Emergencystate=1;
-			}
-		}
-    }else if(Emergencystate==1){
-    	for(int i=0;i<8;i++){
-    		TxData1[i]=0;
-    	}
-    	TxData2[0]=0;
-    	TxData2[1]=1;
+    if(Emergencystate == 0){
+
+        if(buffer[0] == 0xff){
+
+            datapos = 0;
+
+        }else if(datapos >= 0){
+
+            data[datapos++] = buffer[0];
+
+            if(datapos >= 8){
+
+                // ESP32から受信した8バイトをそのままコピー
+                for(int i = 0; i < 8; i++){
+                    TxData1[i] = data[i];
+                }
+
+                printf("data[7] = %d\r\n", data[7]);
+                printf("TxData1[7] = %d\r\n", TxData1[7]);
+
+                datapos = -1;
+            }
+        }
+
+    }else if(Emergencystate == 1){
+
+        for(int i = 0; i < 8; i++){
+            TxData1[i] = 0;
+        }
+
+        TxData2[0] = 0;
+        TxData2[1] = 1;
     }
 
-
-
-	HAL_UART_Receive_IT(&huart1, buffer, size);
+    HAL_UART_Receive_IT(&huart1, buffer, size);
 }
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart){
 	printf("uart_error\r\n");
