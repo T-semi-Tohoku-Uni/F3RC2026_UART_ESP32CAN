@@ -117,6 +117,7 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart){
 	HAL_UART_Receive_IT(&huart1, buffer, size);
 	datapos=-1;
 }
+
 /* USER CODE END 0 */
 
 /**
@@ -152,7 +153,7 @@ int main(void)
   MX_USART1_UART_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
-
+  HAL_UART_Receive_IT(&huart1, buffer, size);
   /* USER CODE END 2 */
 
   /* Infinite loop */
