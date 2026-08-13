@@ -39,13 +39,16 @@
 /* USER CODE BEGIN PM */
 volatile uint8_t Emergencystate=0;//0：正常　1：異常
 volatile uint8_t Emergencyreset=2;
+
+volatile uint32_t uart_timeout = 0;
+
 uint8_t TxData1[8] = {};
 uint8_t TxData2[8]={};
 
 uint8_t buffer[1] = {};
 uint8_t size = 1;
 int8_t datapos=-1;
-uint8_t data[9];
+uint8_t data[8];
 uint16_t FIRSTCANID = 0x300;
 uint16_t SECONDCANID = 0x301;
 
@@ -80,41 +83,82 @@ int _write(int file, char *ptr, int len)
 }
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
-    if(Emergencystate == 0){
+    if (huart->Instance == USART1) {
 
-        if(buffer[0] == 0xff){
+        if (Emergencystate == 0) {
 
-            datapos = 0;
+            // パケット開始待ち
+            if (datapos == -1) {
 
-        }else if(datapos >= 0){
+                // 0xFFが来たら新しいパケット開始
+                if (buffer[0] == 0xFF) {
+                    datapos = 0;
+                }
+            }
 
-            data[datapos++] = buffer[0];
+            // 8バイトのデータを受信中
+            else if (datapos < 8) {
 
-            if(datapos >= 8){
+                // 途中で0xFFが来た場合
+                // → それまでのデータを破棄
+                // → この0xFFから新しいパケットを開始
+                if (buffer[0] == 0xFF) {
+                    datapos = 0;
+                }
+                else {
+                    data[datapos] = buffer[0];
+                    datapos++;
+                }
+            }
 
-                // ESP32から受信した8バイトをそのままコピー
-                for(int i = 0; i < 8; i++){
-                    TxData1[i] = data[i];
+            // 8バイト受信完了後
+            else if (datapos == 8) {
+
+                // 8バイトの後に0xFF
+                // → 正常なパケット
+                if (buffer[0] == 0xFF) {
+
+                    // 8バイトを確定
+                    for (int i = 0; i < 8; i++) {
+                        TxData1[i] = data[i];
+                    }
+
+                    printf("data[0] = %d\r\n", data[0]);
+                    printf("data[1] = %d\r\n", data[1]);
+                    printf("data[2] = %d\r\n", data[2]);
+                    printf("data[3] = %d\r\n", data[3]);
+                    printf("data[4] = %d\r\n", data[4]);
+                    printf("data[5] = %d\r\n", data[5]);
+                    printf("data[6] = %d\r\n", data[6]);
+                    printf("data[7] = %d\r\n", data[7]);
+
+                    // 今受信した0xFFを
+                    // 次のパケットの開始としても利用
+                    datapos = 0;
                 }
 
-                printf("data[7] = %d\r\n", data[7]);
-                printf("TxData1[7] = %d\r\n", TxData1[7]);
+                // 8バイトの後が0xFF以外
+                else {
 
-                datapos = -1;
+                    // それまでの8バイトは破棄
+                    datapos = -1;
+                }
             }
         }
 
-    }else if(Emergencystate == 1){
+        else if (Emergencystate == 1) {
 
-        for(int i = 0; i < 8; i++){
-            TxData1[i] = 0;
+            for (int i = 0; i < 8; i++) {
+                TxData1[i] = 0;
+            }
+
+            TxData2[0] = 0;
+            TxData2[1] = 1;
         }
 
-        TxData2[0] = 0;
-        TxData2[1] = 1;
+        // 次の1バイトを受信
+        HAL_UART_Receive_IT(&huart1, buffer, size);
     }
-
-    HAL_UART_Receive_IT(&huart1, buffer, size);
 }
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart){
 	printf("uart_error\r\n");
@@ -159,6 +203,7 @@ int main(void)
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
   HAL_UART_Receive_IT(&huart1, buffer, size);
+  HAL_TIM_Base_Start_IT(&htim6);
   /* USER CODE END 2 */
 
   /* Infinite loop */
