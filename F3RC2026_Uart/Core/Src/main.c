@@ -123,14 +123,14 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                         TxData1[i] = data[i];
                     }
 
-                    printf("data[0] = %d\r\n", data[0]);
-                    printf("data[1] = %d\r\n", data[1]);
-                    printf("data[2] = %d\r\n", data[2]);
-                    printf("data[3] = %d\r\n", data[3]);
-                    printf("data[4] = %d\r\n", data[4]);
-                    printf("data[5] = %d\r\n", data[5]);
-                    printf("data[6] = %d\r\n", data[6]);
-                    printf("data[7] = %d\r\n", data[7]);
+                    // printf("data0:%d\r\n", data[0]);
+                    // printf("data1:%d\r\n", data[1]);
+                    // printf("data2:%d\r\n", data[2]);
+                    // printf("data3:%d\r\n", data[3]);
+                    // printf("data4:%d\r\n", data[4]);
+                    // printf("data5:%d\r\n", data[5]);
+                    // printf("data6:%d\r\n", data[6]);
+                    // printf("data7:%d\r\n", data[7]);
 
                     // 今受信した0xFFを
                     // 次のパケットの開始としても利用
