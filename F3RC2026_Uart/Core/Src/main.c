@@ -41,6 +41,7 @@ volatile uint8_t Emergencystate=0;//0：正常　1：異常
 volatile uint8_t Emergencyreset=2;
 
 volatile uint32_t uart_timeout = 0;
+volatile uint8_t uart_received = 0;//0 :未受信 1:受信済み
 
 uint8_t TxData1[8] = {};
 uint8_t TxData2[8]={};
@@ -122,6 +123,8 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                     for (int i = 0; i < 8; i++) {
                         TxData1[i] = data[i];
                     }
+                    uart_received = 1;
+                    uart_timeout = 0;
 
                     // printf("data0:%d\r\n", data[0]);
                     // printf("data1:%d\r\n", data[1]);
@@ -431,7 +434,32 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+    if (htim->Instance == TIM6)
+    {
+      if (uart_received == 1)
+    {
+        uart_timeout++;
 
+        // UARTから約1秒データが来なかった
+        if (uart_timeout >= 1)
+        {
+            Emergencystate = 1;
+
+            // モータ停止用データ
+            for (int i = 0; i < 8; i++)
+            {
+                TxData1[i] = 0;
+            }
+
+            TxData2[0] = 0;
+            TxData2[1] = 1;
+          }
+      
+      }
+    }
+}
 /* USER CODE END 4 */
 
 /**
