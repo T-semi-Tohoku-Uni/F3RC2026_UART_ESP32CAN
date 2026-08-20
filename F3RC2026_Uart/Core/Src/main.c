@@ -43,8 +43,8 @@ volatile uint8_t Emergencyreset=2;
 volatile uint32_t uart_timeout = 0;
 volatile uint8_t uart_received = 0;//0 :未受信 1:受信済み
 
-uint8_t TxData1[8] = {};
-uint8_t TxData2[8]={};
+uint8_t TxData1[8] = {}; // 足回り基板
+uint8_t TxData2[8] = {}; // 回収機構基板
 
 uint8_t buffer[1] = {};
 uint8_t size = 1;
@@ -56,13 +56,15 @@ uint16_t SECONDCANID = 0x301;
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+FDCAN_HandleTypeDef hfdcan1;
+
 TIM_HandleTypeDef htim6;
 
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-
+FDCAN_TxHeaderTypeDef TxHeader;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -71,6 +73,7 @@ static void MX_GPIO_Init(void);
 static void MX_TIM6_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_USART2_UART_Init(void);
+static void MX_FDCAN1_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -119,13 +122,24 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                 // → 正常なパケット
                 if (buffer[0] == 0xFF) {
 
-                    // 8バイトを確定
-                    for (int i = 0; i < 8; i++) {
-                        TxData1[i] = data[i];
-                    }
-                    uart_received = 1;
-                    uart_timeout = 0;
+                  // 8バイトを確定
+                  TxData1[0] = data[3];
+                  TxData1[1] = data[5];
+                  TxData1[2] = data[2];
 
+                  TxData2[0] = (data[7] >> 2) & 0x0F;
+                  TxData2[1] = data[0];
+                  TxData2[2] = data[1];
+
+                  uart_received = 1;
+                  uart_timeout = 0;
+                  
+                  // TxData1 の送信 (ID: 0x105)
+                  TxHeader.Identifier = 0x105;
+                  HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader, TxData1);
+                  // TxData2 の送信 (ID: 0x205)
+                  TxHeader.Identifier = 0x205;
+                  HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader, TxData2);
                     // printf("data0:%d\r\n", data[0]);
                     // printf("data1:%d\r\n", data[1]);
                     // printf("data2:%d\r\n", data[2]);
@@ -154,9 +168,6 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
             for (int i = 0; i < 8; i++) {
                 TxData1[i] = 0;
             }
-
-            TxData2[0] = 0;
-            TxData2[1] = 1;
         }
 
         // 次の1バイトを受信
@@ -204,9 +215,22 @@ int main(void)
   MX_TIM6_Init();
   MX_USART1_UART_Init();
   MX_USART2_UART_Init();
+  MX_FDCAN1_Init();
   /* USER CODE BEGIN 2 */
   HAL_UART_Receive_IT(&huart1, buffer, size);
   HAL_TIM_Base_Start_IT(&htim6);
+
+  TxHeader.Identifier = 0x105;                 // メッセージID (0x105)
+  TxHeader.IdType = FDCAN_STANDARD_ID;         // 標準ID (11ビット)
+  TxHeader.TxFrameType = FDCAN_DATA_FRAME;     // データフレーム
+  TxHeader.DataLength = FDCAN_DLC_BYTES_8;     // 8バイト送信
+  TxHeader.ErrorStateIndicator = FDCAN_ESI_ACTIVE;
+  TxHeader.BitRateSwitch = FDCAN_BRS_OFF;      // ビットレート切り替えなし
+  TxHeader.FDFormat = FDCAN_CLASSIC_CAN;       // ※通常のCAN通信の場合 (FD通信なら FDCAN_FD_CAN にします)
+  TxHeader.TxEventFifoControl = FDCAN_NO_TX_EVENTS;
+  TxHeader.MessageMarker = 0;
+  // 2. FDCAN通信の開始
+  HAL_FDCAN_Start(&hfdcan1);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -265,6 +289,49 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+}
+
+/**
+  * @brief FDCAN1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_FDCAN1_Init(void)
+{
+
+  /* USER CODE BEGIN FDCAN1_Init 0 */
+
+  /* USER CODE END FDCAN1_Init 0 */
+
+  /* USER CODE BEGIN FDCAN1_Init 1 */
+
+  /* USER CODE END FDCAN1_Init 1 */
+  hfdcan1.Instance = FDCAN1;
+  hfdcan1.Init.ClockDivider = FDCAN_CLOCK_DIV1;
+  hfdcan1.Init.FrameFormat = FDCAN_FRAME_FD_BRS;
+  hfdcan1.Init.Mode = FDCAN_MODE_NORMAL;
+  hfdcan1.Init.AutoRetransmission = DISABLE;
+  hfdcan1.Init.TransmitPause = DISABLE;
+  hfdcan1.Init.ProtocolException = DISABLE;
+  hfdcan1.Init.NominalPrescaler = 4;
+  hfdcan1.Init.NominalSyncJumpWidth = 1;
+  hfdcan1.Init.NominalTimeSeg1 = 15;
+  hfdcan1.Init.NominalTimeSeg2 = 4;
+  hfdcan1.Init.DataPrescaler = 2;
+  hfdcan1.Init.DataSyncJumpWidth = 1;
+  hfdcan1.Init.DataTimeSeg1 = 15;
+  hfdcan1.Init.DataTimeSeg2 = 4;
+  hfdcan1.Init.StdFiltersNbr = 1;
+  hfdcan1.Init.ExtFiltersNbr = 0;
+  hfdcan1.Init.TxFifoQueueMode = FDCAN_TX_FIFO_OPERATION;
+  if (HAL_FDCAN_Init(&hfdcan1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN FDCAN1_Init 2 */
+
+  /* USER CODE END FDCAN1_Init 2 */
+
 }
 
 /**
@@ -452,10 +519,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
             {
                 TxData1[i] = 0;
             }
-
-            TxData2[0] = 0;
-            TxData2[1] = 1;
-          }
+        }
       
       }
     }
