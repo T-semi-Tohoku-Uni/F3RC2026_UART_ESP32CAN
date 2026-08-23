@@ -43,6 +43,9 @@ volatile uint8_t Emergencyreset=2;
 volatile uint32_t uart_timeout = 0;
 volatile uint8_t uart_received = 0;//0 :未受信 1:受信済み
 
+volatile uint32_t recovery_count = 0; // 非常停止中のUART受信カウント（1秒間で90回以上で復帰）
+volatile uint32_t recovery_timer = 0; // 非常停止中の1秒ウィンドウ計測用（10ms単位）
+
 uint8_t TxData1[8] = {}; // 足回り基板
 uint8_t TxData2[8] = {}; // 回収機構基板
 
@@ -89,84 +92,50 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
     if (huart->Instance == USART1) {
 
-        if (Emergencystate == 0) {
-
-            // パケット開始待ち
-            if (datapos == -1) {
-
-                // 0xFFが来たら新しいパケット開始
-                if (buffer[0] == 0xFF) {
-                    datapos = 0;
-                }
-            }
-
-            // 8バイトのデータを受信中
-            else if (datapos < 8) {
-
-                // 途中で0xFFが来た場合
-                // → それまでのデータを破棄
-                // → この0xFFから新しいパケットを開始
-                if (buffer[0] == 0xFF) {
-                    datapos = 0;
-                }
-                else {
-                    data[datapos] = buffer[0];
-                    datapos++;
-                }
-            }
-
-            // 8バイト受信完了後
-            else if (datapos == 8) {
-
-                // 8バイトの後に0xFF
-                // → 正常なパケット
-                if (buffer[0] == 0xFF) {
-
-                  // 8バイトを確定
-                  TxData1[0] = data[3];
-                  TxData1[1] = data[5];
-                  TxData1[2] = data[2];
-
-                  TxData2[0] = (data[7] >> 2) & 0x0F;
-                  TxData2[1] = data[0];
-                  TxData2[2] = data[1];
-
-                  uart_received = 1;
-                  uart_timeout = 0;
-                  
-                  // TxData1 の送信 (ID: 0x105)
-                  TxHeader.Identifier = 0x105;
-                  HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader, TxData1);
-                  // TxData2 の送信 (ID: 0x205)
-                  TxHeader.Identifier = 0x205;
-                  HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader, TxData2);
-                    // printf("data0:%d\r\n", data[0]);
-                    // printf("data1:%d\r\n", data[1]);
-                    // printf("data2:%d\r\n", data[2]);
-                    // printf("data3:%d\r\n", data[3]);
-                    // printf("data4:%d\r\n", data[4]);
-                    // printf("data5:%d\r\n", data[5]);
-                    // printf("data6:%d\r\n", data[6]);
-                    // printf("data7:%d\r\n", data[7]);
-
-                    // 今受信した0xFFを
-                    // 次のパケットの開始としても利用
-                    datapos = 0;
-                }
-
-                // 8バイトの後が0xFF以外
-                else {
-
-                    // それまでの8バイトは破棄
-                    datapos = -1;
-                }
+        // --- パケット解析処理（正常時・非常停止時ともに共通で実行） ---
+        if (datapos == -1) {
+            if (buffer[0] == 0xFF) {
+                datapos = 0;
             }
         }
+        else if (datapos < 8) {
+            if (buffer[0] == 0xFF) {
+                datapos = 0; // 途中で0xFFが来たらリセットして再スタート
+            } else {
+                data[datapos] = buffer[0];
+                datapos++;
+            }
+        }
+        else if (datapos == 8) {
+            if (buffer[0] == 0xFF) { // ★正常なパケットを1つ受信用完了
+                
+                if (Emergencystate == 0) {
+                    // 正常動作時：データを更新してCAN送信
+                    TxData1[0] = data[3];
+                    TxData1[1] = data[5];
+                    TxData1[2] = data[2];
 
-        else if (Emergencystate == 1) {
+                    TxData2[0] = (data[7] >> 2) & 0x0F;
+                    TxData2[1] = data[0];
+                    TxData2[2] = data[1];
 
-            for (int i = 0; i < 8; i++) {
-                TxData1[i] = 0;
+                    uart_received = 1;
+                    uart_timeout = 0;
+
+                    TxHeader.Identifier = 0x105;
+                    HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader, TxData1);
+                    TxHeader.Identifier = 0x205;
+                    HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader, TxData2);
+                } 
+                else if (Emergencystate == 1) {
+                    // 非常停止時：正常パケット数をカウント
+                    recovery_count++;
+                }
+
+                datapos = 0; // 次のパケット開始用
+            } 
+            else {
+                datapos = -1; // 不正パケット破棄
             }
         }
 
@@ -352,9 +321,9 @@ static void MX_TIM6_Init(void)
 
   /* USER CODE END TIM6_Init 1 */
   htim6.Instance = TIM6;
-  htim6.Init.Prescaler = 1999;
+  htim6.Init.Prescaler = 79;
   htim6.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim6.Init.Period = 40000;
+  htim6.Init.Period = 10000;
   htim6.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim6) != HAL_OK)
   {
@@ -505,23 +474,71 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
     if (htim->Instance == TIM6)
     {
-      if (uart_received == 1)
-    {
-        uart_timeout++;
-
-        // UARTから約1秒データが来なかった
-        if (uart_timeout >= 1)
+        if (Emergencystate == 0)
         {
-            Emergencystate = 1;
-
-            // モータ停止用データ
-            for (int i = 0; i < 8; i++)
+            // 正常時：タイムアウト検出
+            if (uart_received == 1)
             {
-                TxData1[i] = 0;
+                uart_timeout++;
+
+                // UARTから約1秒データが来なかった → 非常停止
+                // TIM6は10ms周期なので、100回 = 1秒
+                if (uart_timeout >= 100)
+                {
+                    Emergencystate = 1;
+                    recovery_count = 0; // 復帰カウンタリセット
+                    recovery_timer = 0; // 1秒ウィンドウタイマーリセット
+                    datapos = -1;       // パケット受信状態リセット
+
+                    // モータ停止用ゼロデータをCAN送信
+                    for (int i = 0; i < 8; i++)
+                    {
+                        TxData1[i] = 0;
+                        TxData2[i] = 0;
+                    }
+                    TxHeader.Identifier = 0x105;
+                    HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader, TxData1);
+                    TxHeader.Identifier = 0x205;
+                    HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader, TxData2);
+                }
             }
         }
-      
-      }
+        else if (Emergencystate == 1)
+        {
+            // 非常停止中：1秒ウィンドウで復帰判定
+            recovery_timer++;
+
+            if (recovery_timer >= 100) // 100回 × 10ms = 1秒経過
+            {
+                if (recovery_count >= 90)
+                {
+                    // 1秒間に90回以上UART受信 → 復帰
+                    Emergencystate = 0;
+                    uart_timeout = 0;
+                    uart_received = 0;
+                    datapos = -1;
+                    recovery_count = 0;
+                    recovery_timer = 0;
+                }
+                else
+                {
+                    // 90回未満 → 非常停止継続、カウンタリセットして次の1秒を計測
+                    recovery_count = 0;
+                    recovery_timer = 0;
+
+                    // 非常停止中もモータ停止用ゼロデータを定期送信
+                    for (int i = 0; i < 8; i++)
+                    {
+                        TxData1[i] = 0;
+                        TxData2[i] = 0;
+                    }
+                    TxHeader.Identifier = 0x105;
+                    HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader, TxData1);
+                    TxHeader.Identifier = 0x205;
+                    HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader, TxData2);
+                }
+            }
+        }
     }
 }
 /* USER CODE END 4 */
