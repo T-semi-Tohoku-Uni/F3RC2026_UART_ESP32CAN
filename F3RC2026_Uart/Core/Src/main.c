@@ -124,12 +124,34 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                     // R1 (ボタン状態: data[7] の bit5) -> TxData2[2]
                     TxData2[2] = (data[7] >> 5) & 0x01;
                     // R2 (アナログ値 0〜255: data[0]) -> TxData2[3]
-                    TxData2[3] = data[0];
+                    if (data[0] > 60)
+                        TxData2[3] = 1;
+                    else
+                        TxData2[3] = 0;
                     // L1 (ボタン状態: data[7] の bit4) -> TxData2[4]
                     TxData2[4] = (data[7] >> 4) & 0x01;
                     // L2 (アナログ値 0〜255: data[1]) -> TxData2[5]
-                    TxData2[5] = data[1];
-
+                    if (data[1] > 60)
+                        TxData2[5] = 1;
+                    else
+                        TxData2[5] = 0;
+                    
+                    // printf("TxData1[0]:%d\r\n", TxData1[0]);
+                    // printf("TxData1[1]:%d\r\n", TxData1[1]);
+                    // printf("TxData1[2]:%d\r\n", TxData1[2]);
+                    // printf("TxData1[3]:%d\r\n", TxData1[3]);
+                    // printf("TxData1[4]:%d\r\n", TxData1[4]);
+                    // printf("TxData1[5]:%d\r\n", TxData1[5]);
+                    // printf("TxData1[6]:%d\r\n", TxData1[6]);
+                    // printf("TxData1[7]:%d\r\n", TxData1[7]);
+                    // printf("TxData2[0]:%d\r\n", TxData2[0]);
+                    // printf("TxData2[1]:%d\r\n", TxData2[1]);
+                    // printf("TxData2[2]:%d\r\n", TxData2[2]);
+                    // printf("TxData2[3]:%d\r\n", TxData2[3]);
+                    // printf("TxData2[4]:%d\r\n", TxData2[4]);
+                    // printf("TxData2[5]:%d\r\n", TxData2[5]);
+                    // printf("TxData2[6]:%d\r\n", TxData2[6]);
+                    // printf("TxData2[7]:%d\r\n", TxData2[7]);
                     uart_received = 1;
                     uart_timeout = 0;
 
