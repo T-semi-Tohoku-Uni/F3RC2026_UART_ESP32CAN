@@ -119,9 +119,16 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 
                     // 〇（Circle）の値 (data[7] の bit3 に入っているボタン状態: 0 または 1)
                     TxData2[0] = (data[7] >> 3) & 0x01;
-
                     // □（Square）の値 (data[7] の bit2 に入っているボタン状態: 0 または 1)
                     TxData2[1] = (data[7] >> 2) & 0x01;
+                    // R1 (ボタン状態: data[7] の bit5) -> TxData2[2]
+                    TxData2[2] = (data[7] >> 5) & 0x01;
+                    // R2 (アナログ値 0〜255: data[0]) -> TxData2[3]
+                    TxData2[3] = data[0];
+                    // L1 (ボタン状態: data[7] の bit4) -> TxData2[4]
+                    TxData2[4] = (data[7] >> 4) & 0x01;
+                    // L2 (アナログ値 0〜255: data[1]) -> TxData2[5]
+                    TxData2[5] = data[1];
 
                     uart_received = 1;
                     uart_timeout = 0;
