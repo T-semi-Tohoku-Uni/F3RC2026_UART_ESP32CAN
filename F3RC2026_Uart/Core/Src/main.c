@@ -115,9 +115,13 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                     TxData1[1] = data[5];
                     TxData1[2] = data[2];
 
-                    TxData2[0] = (data[7] >> 2) & 0x0F;
-                    TxData2[1] = data[0];
-                    TxData2[2] = data[1];
+                    // data配列がUART等で受信されたデータ（8バイト）だと仮定
+
+                    // 〇（Circle）の値 (data[7] の bit3 に入っているボタン状態: 0 または 1)
+                    TxData2[0] = (data[7] >> 3) & 0x01;
+
+                    // □（Square）の値 (data[7] の bit2 に入っているボタン状態: 0 または 1)
+                    TxData2[1] = (data[7] >> 2) & 0x01;
 
                     uart_received = 1;
                     uart_timeout = 0;
