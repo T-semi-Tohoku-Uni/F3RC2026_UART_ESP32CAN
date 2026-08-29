@@ -160,6 +160,8 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                         int8_t val1 = data[5];
                         int8_t val2 = data[2];
 
+                        val2 = -val2;
+
                         iuc[0].i8 = (val0 >= -10 && val0 <= 10) ? 0 : val0;
                         iuc[1].i8 = (val1 >= -10 && val1 <= 10) ? 0 : val1;
                         iuc[2].i8 = (val2 >= -10 && val2 <= 10) ? 0 : val2;
