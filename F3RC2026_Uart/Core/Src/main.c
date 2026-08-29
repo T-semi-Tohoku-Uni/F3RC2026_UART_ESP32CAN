@@ -43,6 +43,9 @@ volatile uint8_t Emergencyreset=2;
 volatile uint32_t uart_timeout = 0;
 volatile uint8_t uart_received = 0;//0 :未受信 1:受信済み
 
+volatile uint8_t slow = 0; // slowモーション 0:普通 1:スロー
+volatile uint8_t slow_count = 0; // slowモーションカウント 0 1
+
 volatile uint32_t recovery_count = 0; // 非常停止中のUART受信カウント（1秒間で90回以上で復帰）
 volatile uint32_t recovery_timer = 0; // 非常停止中の1秒ウィンドウ計測用（10ms単位）
 
@@ -70,11 +73,15 @@ UART_HandleTypeDef huart2;
 /* USER CODE BEGIN PV */
 FDCAN_TxHeaderTypeDef TxHeader;
 
+TIM_HandleTypeDef htim7;
+
 //int8⇔uint8変換用
 typedef union {
     int8_t i8;
     uint8_t u8;
 } int8_uint8_converter;
+
+int8_uint8_converter iuc[3];
 
 
 
@@ -122,13 +129,36 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                 
                 if (Emergencystate == 0) {
                     // 正常動作時：データを更新してCAN送信
+                  
                     int8_t val0 = data[3];
                     int8_t val1 = data[5];
                     int8_t val2 = data[2];
 
-                    TxData1[0] = (uint8_t)(val0 >= -10 && val0 <= 10) ? 0 : val0;
-                    TxData1[1] = (uint8_t)(val1 >= -10 && val1 <= 10) ? 0 : val1;
-                    TxData1[2] = (uint8_t)(val2 >= -10 && val2 <= 10) ? 0 : val2;
+                    iuc[0].i8 = (val0 >= -10 && val0 <= 10) ? 0 : val0;
+                    iuc[1].i8 = (val1 >= -10 && val1 <= 10) ? 0 : val1;
+                    iuc[2].i8 = (val2 >= -10 && val2 <= 10) ? 0 : val2;
+
+
+
+                    if (slow == 1) {
+                          iuc[0].i8 /= 2;
+                          iuc[1].i8 /= 2;
+                          iuc[2].i8 /= 2;
+                    }
+
+                    if ((data[7] & 0x01) && (slow_count == 0)) {
+                      slow = !slow;
+                      slow_count = 1;
+                      // TIM7のカウント初期化と再スタート
+                      HAL_TIM_Base_Stop_IT(&htim7);               // 一旦停止
+                      __HAL_TIM_SET_COUNTER(&htim7, 0);          // カウンタリセット
+                      __HAL_TIM_CLEAR_FLAG(&htim7, TIM_FLAG_UPDATE); // ★先行してセットされているフラグをクリア
+                      HAL_TIM_Base_Start_IT(&htim7);
+                    }
+
+                    TxData1[0] = iuc[0].u8;
+                    TxData1[1] = iuc[1].u8;
+                    TxData1[2] = iuc[2].u8;
 
                     // data配列がUART等で受信されたデータ（8バイト）だと仮定
 
@@ -151,6 +181,14 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                     else
                         TxData2[5] = 0;
                     
+
+
+
+
+
+
+
+
                     // printf("TxData1[0]:%d\r\n", TxData1[0]);
                     // printf("TxData1[1]:%d\r\n", TxData1[1]);
                     // printf("TxData1[2]:%d\r\n", TxData1[2]);
@@ -627,6 +665,13 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
             }
         }
     }
+  else if (htim->Instance == TIM7)
+  {
+    slow_count = 0;
+    // 指定時間経過したらタイマーを停止し、切替受付を解禁
+    HAL_TIM_Base_Stop_IT(&htim7);
+  
+  }
 }
 /* USER CODE END 4 */
 
