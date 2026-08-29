@@ -46,6 +46,9 @@ volatile uint8_t uart_received = 0;//0 :未受信 1:受信済み
 volatile uint8_t slow = 0; // slowモーション 0:普通 1:スロー
 volatile uint8_t slow_count = 0; // slowモーションカウント 0 1
 
+volatile uint8_t stop = 0; // stopモーション 0:普通 1:停止
+volatile uint16_t stopCount = 0;
+
 volatile uint32_t recovery_count = 0; // 非常停止中のUART受信カウント（1秒間で90回以上で復帰）
 volatile uint32_t recovery_timer = 0; // 非常停止中の1秒ウィンドウ計測用（10ms単位）
 
@@ -66,14 +69,13 @@ FDCAN_HandleTypeDef hfdcan1;
 
 TIM_HandleTypeDef htim6;
 TIM_HandleTypeDef htim7;
+TIM_HandleTypeDef htim16;
 
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 FDCAN_TxHeaderTypeDef TxHeader;
-
-TIM_HandleTypeDef htim7;
 
 //int8⇔uint8変換用
 typedef union {
@@ -82,9 +84,6 @@ typedef union {
 } int8_uint8_converter;
 
 int8_uint8_converter iuc[3];
-
-
-
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -95,6 +94,7 @@ static void MX_USART1_UART_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_FDCAN1_Init(void);
 static void MX_TIM7_Init(void);
+static void MX_TIM16_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -129,7 +129,21 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                 
                 if (Emergencystate == 0) {
                     // 正常動作時：データを更新してCAN送信
-                  
+                  if (((data[6] >> 2) & 0x01) && (stopCount == 0)) {
+                      stop = !stop;     // 0:通常 ⇔ 1:停止 のトグル切り替え
+                      stopCount = 1;    // ガード状態（ボタン連続判定防止）に設定
+
+                      // TIM16を初期化してスタート（チャタリング/長押しガード）
+                      HAL_TIM_Base_Stop_IT(&htim16);
+                      __HAL_TIM_SET_COUNTER(&htim16, 0);
+                      __HAL_TIM_CLEAR_FLAG(&htim16, TIM_FLAG_UPDATE);
+                      HAL_TIM_Base_Start_IT(&htim16);
+                  }
+                  if (stop == 1) {
+                      // 停止状態の時はモータへの指令値を全ゼロにする
+                      memset(TxData1, 0, sizeof(TxData1));
+                      memset(TxData2, 0, sizeof(TxData2));
+                  }else{
                     int8_t val0 = data[3];
                     int8_t val1 = data[5];
                     int8_t val2 = data[2];
@@ -145,6 +159,9 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                           iuc[1].i8 /= 2;
                           iuc[2].i8 /= 2;
                     }
+
+                    uint8_t options_now = (data[6] >> 2) & 0x01;
+                    
 
                     if ((data[7] & 0x01) && (slow_count == 0)) {
                       slow = !slow;
@@ -180,15 +197,6 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                         TxData2[5] = 1;
                     else
                         TxData2[5] = 0;
-                    
-
-
-
-
-
-
-
-
                     // printf("TxData1[0]:%d\r\n", TxData1[0]);
                     // printf("TxData1[1]:%d\r\n", TxData1[1]);
                     // printf("TxData1[2]:%d\r\n", TxData1[2]);
@@ -213,6 +221,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                     TxHeader.Identifier = 0x205;
                     HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader, TxData2);
                 } 
+              }
                 else if (Emergencystate == 1) {
                     // 非常停止時：正常パケット数をカウント
                     recovery_count++;
@@ -227,13 +236,24 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 
         // 次の1バイトを受信
         HAL_UART_Receive_IT(&huart1, buffer, size);
-    }
 }
-void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart){
-	printf("uart_error\r\n");
-	HAL_UART_Abort(huart);
-	HAL_UART_Receive_IT(&huart1, buffer, size);
-	datapos=-1;
+}
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+{
+    if (huart->Instance == USART1)
+    {
+        // エラーフラグ（ORE: オーバーラン, NE: ノイズ, FE: フレーム, PE: パリティ）をクリア
+        __HAL_UART_CLEAR_FLAG(huart, UART_CLEAR_OREF | UART_CLEAR_NEF | UART_CLEAR_PEF | UART_CLEAR_FEF);
+
+        // 受信データレジスタのゴミデータを空読みしてフラグを確実に解除
+        volatile uint32_t dummy = huart->Instance->RDR;
+        (void)dummy;
+
+        datapos = -1;
+
+        // 受信割り込みを再開
+        HAL_UART_Receive_IT(&huart1, buffer, size);
+    }
 }
 
 /* USER CODE END 0 */
@@ -272,7 +292,15 @@ int main(void)
   MX_USART2_UART_Init();
   MX_FDCAN1_Init();
   MX_TIM7_Init();
+  MX_TIM16_Init();
   /* USER CODE BEGIN 2 */
+  // デバッグ停止中（ブレークポイント時）にタイマがカウントアップして割り込みが乱発するのを防ぐ
+  __HAL_DBGMCU_FREEZE_TIM6();
+  __HAL_DBGMCU_FREEZE_TIM7();
+  __HAL_DBGMCU_FREEZE_TIM16();
+
+  // UART初期化時の残留エラーフラグをクリア
+  __HAL_UART_CLEAR_FLAG(&huart1, UART_CLEAR_OREF | UART_CLEAR_NEF | UART_CLEAR_PEF | UART_CLEAR_FEF);
   HAL_UART_Receive_IT(&huart1, buffer, size);
   HAL_TIM_Base_Start_IT(&htim6);
 
@@ -463,6 +491,38 @@ static void MX_TIM7_Init(void)
   /* USER CODE BEGIN TIM7_Init 2 */
 
   /* USER CODE END TIM7_Init 2 */
+
+}
+
+/**
+  * @brief TIM16 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM16_Init(void)
+{
+
+  /* USER CODE BEGIN TIM16_Init 0 */
+
+  /* USER CODE END TIM16_Init 0 */
+
+  /* USER CODE BEGIN TIM16_Init 1 */
+
+  /* USER CODE END TIM16_Init 1 */
+  htim16.Instance = TIM16;
+  htim16.Init.Prescaler = 7999;
+  htim16.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim16.Init.Period = 3000;
+  htim16.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim16.Init.RepetitionCounter = 0;
+  htim16.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim16) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM16_Init 2 */
+
+  /* USER CODE END TIM16_Init 2 */
 
 }
 
@@ -671,6 +731,12 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     // 指定時間経過したらタイマーを停止し、切替受付を解禁
     HAL_TIM_Base_Stop_IT(&htim7);
   
+  }
+  else if (htim->Instance == TIM16)
+  {
+    stopCount = 0;
+    // 指定時間経過したらタイマーを停止し、切替受付を解禁
+    HAL_TIM_Base_Stop_IT(&htim16);
   }
 }
 /* USER CODE END 4 */
