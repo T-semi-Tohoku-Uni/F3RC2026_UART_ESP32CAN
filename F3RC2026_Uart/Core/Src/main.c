@@ -148,10 +148,13 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                         uart_received = 1;
                         uart_timeout = 0;
 
-                        TxHeader.Identifier = 0x105;
-                        HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader, TxData1);
-                        TxHeader.Identifier = 0x205;
-                        HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader, TxData2);
+                        // ★ FIFOに2つ以上の空きがある場合のみ送信する
+                        if (HAL_FDCAN_GetTxFifoFreeLevel(&hfdcan1) >= 2) {
+                            TxHeader.Identifier = 0x105;
+                            HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader, TxData1);
+                            TxHeader.Identifier = 0x205;
+                            HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader, TxData2);
+                        }
                     } else {
                         int8_t val0 = data[3];
                         int8_t val1 = data[5];
@@ -201,7 +204,6 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                             TxData2[5] = 1;
                         else
                             TxData2[5] = 0;
-
                         // printf("TxData1[0]:%d\r\n", TxData1[0]);
                         // printf("TxData1[1]:%d\r\n", TxData1[1]);
                         // printf("TxData1[2]:%d\r\n", TxData1[2]);
@@ -218,15 +220,16 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                         // printf("TxData2[5]:%d\r\n", TxData2[5]);
                         // printf("TxData2[6]:%d\r\n", TxData2[6]);
                         // printf("TxData2[7]:%d\r\n", TxData2[7]);
-
                         uart_received = 1;
                         uart_timeout = 0;
-
-                        TxHeader.Identifier = 0x105;
-                        HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader, TxData1);
-                        TxHeader.Identifier = 0x205;
-                        HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader, TxData2);
-                    } 
+                        
+                        if (HAL_FDCAN_GetTxFifoFreeLevel(&hfdcan1) >= 2) {
+                            TxHeader.Identifier = 0x105;
+                            HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader, TxData1);
+                            TxHeader.Identifier = 0x205;
+                            HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader, TxData2);
+                        }
+                    }
                 } 
                 else if (Emergencystate == 1) {
                     // 非常停止時：正常パケット数をカウント
@@ -519,7 +522,7 @@ static void MX_TIM16_Init(void)
   htim16.Instance = TIM16;
   htim16.Init.Prescaler = 7999;
   htim16.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim16.Init.Period = 3000;
+  htim16.Init.Period = 10000;
   htim16.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim16.Init.RepetitionCounter = 0;
   htim16.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
