@@ -159,10 +159,6 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                           iuc[1].i8 /= 2;
                           iuc[2].i8 /= 2;
                     }
-
-                    uint8_t options_now = (data[6] >> 2) & 0x01;
-                    
-
                     if ((data[7] & 0x01) && (slow_count == 0)) {
                       slow = !slow;
                       slow_count = 1;
