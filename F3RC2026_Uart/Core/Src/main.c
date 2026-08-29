@@ -129,95 +129,105 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                 
                 if (Emergencystate == 0) {
                     // 正常動作時：データを更新してCAN送信
-                  if (((data[6] >> 2) & 0x01) && (stopCount == 0)) {
-                      stop = !stop;     // 0:通常 ⇔ 1:停止 のトグル切り替え
-                      stopCount = 1;    // ガード状態（ボタン連続判定防止）に設定
+                    if (((data[6] >> 2) & 0x01) && (stopCount == 0)) {
+                        stop = !stop;     // 0:通常 ⇔ 1:停止 のトグル切り替え
+                        stopCount = 1;    // ガード状態（ボタン連続判定防止）に設定
 
-                      // TIM16を初期化してスタート（チャタリング/長押しガード）
-                      HAL_TIM_Base_Stop_IT(&htim16);
-                      __HAL_TIM_SET_COUNTER(&htim16, 0);
-                      __HAL_TIM_CLEAR_FLAG(&htim16, TIM_FLAG_UPDATE);
-                      HAL_TIM_Base_Start_IT(&htim16);
-                  }
-                  if (stop == 1) {
-                      // 停止状態の時はモータへの指令値を全ゼロにする
-                      memset(TxData1, 0, sizeof(TxData1));
-                      memset(TxData2, 0, sizeof(TxData2));
-                  }else{
-                    int8_t val0 = data[3];
-                    int8_t val1 = data[5];
-                    int8_t val2 = data[2];
-
-                    iuc[0].i8 = (val0 >= -10 && val0 <= 10) ? 0 : val0;
-                    iuc[1].i8 = (val1 >= -10 && val1 <= 10) ? 0 : val1;
-                    iuc[2].i8 = (val2 >= -10 && val2 <= 10) ? 0 : val2;
-
-
-
-                    if (slow == 1) {
-                          iuc[0].i8 /= 2;
-                          iuc[1].i8 /= 2;
-                          iuc[2].i8 /= 2;
-                    }
-                    if ((data[7] & 0x01) && (slow_count == 0)) {
-                      slow = !slow;
-                      slow_count = 1;
-                      // TIM7のカウント初期化と再スタート
-                      HAL_TIM_Base_Stop_IT(&htim7);               // 一旦停止
-                      __HAL_TIM_SET_COUNTER(&htim7, 0);          // カウンタリセット
-                      __HAL_TIM_CLEAR_FLAG(&htim7, TIM_FLAG_UPDATE); // ★先行してセットされているフラグをクリア
-                      HAL_TIM_Base_Start_IT(&htim7);
+                        // TIM16を初期化してスタート（チャタリング/長押しガード）
+                        HAL_TIM_Base_Stop_IT(&htim16);
+                        __HAL_TIM_SET_COUNTER(&htim16, 0);
+                        __HAL_TIM_CLEAR_FLAG(&htim16, TIM_FLAG_UPDATE);
+                        HAL_TIM_Base_Start_IT(&htim16);
                     }
 
-                    TxData1[0] = iuc[0].u8;
-                    TxData1[1] = iuc[1].u8;
-                    TxData1[2] = iuc[2].u8;
+                    if (stop == 1) {
+                        // 停止状態の時はモータへの指令値を全ゼロにする
+                        memset(TxData1, 0, sizeof(TxData1));
+                        memset(TxData2, 0, sizeof(TxData2));
 
-                    // data配列がUART等で受信されたデータ（8バイト）だと仮定
+                        uart_received = 1;
+                        uart_timeout = 0;
 
-                    // 〇（Circle）の値 (data[7] の bit3 に入っているボタン状態: 0 または 1)
-                    TxData2[0] = (data[7] >> 3) & 0x01;
-                    // □（Square）の値 (data[7] の bit2 に入っているボタン状態: 0 または 1)
-                    TxData2[1] = (data[7] >> 2) & 0x01;
-                    // R1 (ボタン状態: data[7] の bit5) -> TxData2[2]
-                    TxData2[2] = (data[7] >> 5) & 0x01;
-                    // R2 (アナログ値 0〜255: data[0]) -> TxData2[3]
-                    if (data[0] > 60)
-                        TxData2[3] = 1;
-                    else
-                        TxData2[3] = 0;
-                    // L1 (ボタン状態: data[7] の bit4) -> TxData2[4]
-                    TxData2[4] = (data[7] >> 4) & 0x01;
-                    // L2 (アナログ値 0〜255: data[1]) -> TxData2[5]
-                    if (data[1] > 60)
-                        TxData2[5] = 1;
-                    else
-                        TxData2[5] = 0;
-                    // printf("TxData1[0]:%d\r\n", TxData1[0]);
-                    // printf("TxData1[1]:%d\r\n", TxData1[1]);
-                    // printf("TxData1[2]:%d\r\n", TxData1[2]);
-                    // printf("TxData1[3]:%d\r\n", TxData1[3]);
-                    // printf("TxData1[4]:%d\r\n", TxData1[4]);
-                    // printf("TxData1[5]:%d\r\n", TxData1[5]);
-                    // printf("TxData1[6]:%d\r\n", TxData1[6]);
-                    // printf("TxData1[7]:%d\r\n", TxData1[7]);
-                    // printf("TxData2[0]:%d\r\n", TxData2[0]);
-                    // printf("TxData2[1]:%d\r\n", TxData2[1]);
-                    // printf("TxData2[2]:%d\r\n", TxData2[2]);
-                    // printf("TxData2[3]:%d\r\n", TxData2[3]);
-                    // printf("TxData2[4]:%d\r\n", TxData2[4]);
-                    // printf("TxData2[5]:%d\r\n", TxData2[5]);
-                    // printf("TxData2[6]:%d\r\n", TxData2[6]);
-                    // printf("TxData2[7]:%d\r\n", TxData2[7]);
-                    uart_received = 1;
-                    uart_timeout = 0;
+                        TxHeader.Identifier = 0x105;
+                        HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader, TxData1);
+                        TxHeader.Identifier = 0x205;
+                        HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader, TxData2);
+                    } else {
+                        int8_t val0 = data[3];
+                        int8_t val1 = data[5];
+                        int8_t val2 = data[2];
 
-                    TxHeader.Identifier = 0x105;
-                    HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader, TxData1);
-                    TxHeader.Identifier = 0x205;
-                    HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader, TxData2);
+                        iuc[0].i8 = (val0 >= -10 && val0 <= 10) ? 0 : val0;
+                        iuc[1].i8 = (val1 >= -10 && val1 <= 10) ? 0 : val1;
+                        iuc[2].i8 = (val2 >= -10 && val2 <= 10) ? 0 : val2;
+
+                        if (slow == 1) {
+                            iuc[0].i8 /= 2;
+                            iuc[1].i8 /= 2;
+                            iuc[2].i8 /= 2;
+                        }
+
+                        if ((data[7] & 0x01) && (slow_count == 0)) {
+                            slow = !slow;
+                            slow_count = 1;
+                            // TIM7のカウント初期化と再スタート
+                            HAL_TIM_Base_Stop_IT(&htim7);               // 一旦停止
+                            __HAL_TIM_SET_COUNTER(&htim7, 0);          // カウンタリセット
+                            __HAL_TIM_CLEAR_FLAG(&htim7, TIM_FLAG_UPDATE); // ★先行してセットされているフラグをクリア
+                            HAL_TIM_Base_Start_IT(&htim7);
+                        }
+
+                        TxData1[0] = iuc[0].u8;
+                        TxData1[1] = iuc[1].u8;
+                        TxData1[2] = iuc[2].u8;
+
+                        // data配列がUART等で受信されたデータ（8バイト）だと仮定
+
+                        // 〇（Circle）の値 (data[7] の bit3 に入っているボタン状態: 0 または 1)
+                        TxData2[0] = (data[7] >> 3) & 0x01;
+                        // □（Square）の値 (data[7] の bit2 に入っているボタン状態: 0 または 1)
+                        TxData2[1] = (data[7] >> 2) & 0x01;
+                        // R1 (ボタン状態: data[7] の bit5) -> TxData2[2]
+                        TxData2[2] = (data[7] >> 5) & 0x01;
+                        // R2 (アナログ値 0〜255: data[0]) -> TxData2[3]
+                        if (data[0] > 60)
+                            TxData2[3] = 1;
+                        else
+                            TxData2[3] = 0;
+                        // L1 (ボタン状態: data[7] の bit4) -> TxData2[4]
+                        TxData2[4] = (data[7] >> 4) & 0x01;
+                        // L2 (アナログ値 0〜255: data[1]) -> TxData2[5]
+                        if (data[1] > 60)
+                            TxData2[5] = 1;
+                        else
+                            TxData2[5] = 0;
+
+                        // printf("TxData1[0]:%d\r\n", TxData1[0]);
+                        // printf("TxData1[1]:%d\r\n", TxData1[1]);
+                        // printf("TxData1[2]:%d\r\n", TxData1[2]);
+                        // printf("TxData1[3]:%d\r\n", TxData1[3]);
+                        // printf("TxData1[4]:%d\r\n", TxData1[4]);
+                        // printf("TxData1[5]:%d\r\n", TxData1[5]);
+                        // printf("TxData1[6]:%d\r\n", TxData1[6]);
+                        // printf("TxData1[7]:%d\r\n", TxData1[7]);
+                        // printf("TxData2[0]:%d\r\n", TxData2[0]);
+                        // printf("TxData2[1]:%d\r\n", TxData2[1]);
+                        // printf("TxData2[2]:%d\r\n", TxData2[2]);
+                        // printf("TxData2[3]:%d\r\n", TxData2[3]);
+                        // printf("TxData2[4]:%d\r\n", TxData2[4]);
+                        // printf("TxData2[5]:%d\r\n", TxData2[5]);
+                        // printf("TxData2[6]:%d\r\n", TxData2[6]);
+                        // printf("TxData2[7]:%d\r\n", TxData2[7]);
+
+                        uart_received = 1;
+                        uart_timeout = 0;
+
+                        TxHeader.Identifier = 0x105;
+                        HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader, TxData1);
+                        TxHeader.Identifier = 0x205;
+                        HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader, TxData2);
+                    } 
                 } 
-              }
                 else if (Emergencystate == 1) {
                     // 非常停止時：正常パケット数をカウント
                     recovery_count++;
@@ -232,8 +242,9 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 
         // 次の1バイトを受信
         HAL_UART_Receive_IT(&huart1, buffer, size);
+    }
 }
-}
+
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 {
     if (huart->Instance == USART1)
