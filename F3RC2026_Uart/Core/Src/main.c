@@ -62,12 +62,22 @@ uint16_t SECONDCANID = 0x301;
 FDCAN_HandleTypeDef hfdcan1;
 
 TIM_HandleTypeDef htim6;
+TIM_HandleTypeDef htim7;
 
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 FDCAN_TxHeaderTypeDef TxHeader;
+
+//int8⇔uint8変換用
+typedef union {
+    int8_t i8;
+    uint8_t u8;
+} int8_uint8_converter;
+
+
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -77,6 +87,7 @@ static void MX_TIM6_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_FDCAN1_Init(void);
+static void MX_TIM7_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -111,9 +122,13 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                 
                 if (Emergencystate == 0) {
                     // 正常動作時：データを更新してCAN送信
-                    TxData1[0] = data[3];
-                    TxData1[1] = data[5];
-                    TxData1[2] = data[2];
+                    int8_t val0 = data[3];
+                    int8_t val1 = data[5];
+                    int8_t val2 = data[2];
+
+                    TxData1[0] = (uint8_t)(val0 >= -10 && val0 <= 10) ? 0 : val0;
+                    TxData1[1] = (uint8_t)(val1 >= -10 && val1 <= 10) ? 0 : val1;
+                    TxData1[2] = (uint8_t)(val2 >= -10 && val2 <= 10) ? 0 : val2;
 
                     // data配列がUART等で受信されたデータ（8バイト）だと仮定
 
@@ -218,6 +233,7 @@ int main(void)
   MX_USART1_UART_Init();
   MX_USART2_UART_Init();
   MX_FDCAN1_Init();
+  MX_TIM7_Init();
   /* USER CODE BEGIN 2 */
   HAL_UART_Receive_IT(&huart1, buffer, size);
   HAL_TIM_Base_Start_IT(&htim6);
@@ -371,6 +387,44 @@ static void MX_TIM6_Init(void)
   /* USER CODE BEGIN TIM6_Init 2 */
 
   /* USER CODE END TIM6_Init 2 */
+
+}
+
+/**
+  * @brief TIM7 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM7_Init(void)
+{
+
+  /* USER CODE BEGIN TIM7_Init 0 */
+
+  /* USER CODE END TIM7_Init 0 */
+
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM7_Init 1 */
+
+  /* USER CODE END TIM7_Init 1 */
+  htim7.Instance = TIM7;
+  htim7.Init.Prescaler = 7999;
+  htim7.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim7.Init.Period = 10000;
+  htim7.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim7) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim7, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM7_Init 2 */
+
+  /* USER CODE END TIM7_Init 2 */
 
 }
 
