@@ -43,6 +43,9 @@ volatile uint8_t Emergencyreset=2;
 volatile uint32_t uart_timeout = 0;
 volatile uint8_t uart_received = 0;//0 :未受信 1:受信済み
 
+volatile uint8_t roll = 0; // 0:通常 1:ロールモード
+
+
 volatile uint8_t slow = 0; // slowモーション 0:普通 1:スロー
 volatile uint8_t slow_count = 0; // slowモーションカウント 0 1
 
@@ -70,6 +73,7 @@ FDCAN_HandleTypeDef hfdcan1;
 TIM_HandleTypeDef htim6;
 TIM_HandleTypeDef htim7;
 TIM_HandleTypeDef htim16;
+TIM_HandleTypeDef htim17;
 
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
@@ -95,6 +99,7 @@ static void MX_USART2_UART_Init(void);
 static void MX_FDCAN1_Init(void);
 static void MX_TIM7_Init(void);
 static void MX_TIM16_Init(void);
+static void MX_TIM17_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -170,6 +175,18 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                             iuc[0].i8 /= 2;
                             iuc[1].i8 /= 2;
                             iuc[2].i8 /= 2;
+                        }
+
+                        TxData1[3] = 0; 
+
+                        if ((data[7] >> 1 & 0x01 ) && (roll == 0)){
+                          roll = 1;
+                          TxData1[3] = 1;
+                          // TIM17を初期化してスタート（ロールモード解除用）
+                          HAL_TIM_Base_Stop_IT(&htim17);
+                          __HAL_TIM_SET_COUNTER(&htim17, 0);
+                          __HAL_TIM_CLEAR_FLAG(&htim17, TIM_FLAG_UPDATE);
+                          HAL_TIM_Base_Start_IT(&htim17);
                         }
 
                         if ((data[7] & 0x01) && (slow_count == 0)) {
@@ -305,11 +322,13 @@ int main(void)
   MX_FDCAN1_Init();
   MX_TIM7_Init();
   MX_TIM16_Init();
+  MX_TIM17_Init();
   /* USER CODE BEGIN 2 */
   // デバッグ停止中（ブレークポイント時）にタイマがカウントアップして割り込みが乱発するのを防ぐ
   __HAL_DBGMCU_FREEZE_TIM6();
   __HAL_DBGMCU_FREEZE_TIM7();
   __HAL_DBGMCU_FREEZE_TIM16();
+  __HAL_DBGMCU_FREEZE_TIM17();
 
   // UART初期化時の残留エラーフラグをクリア
   __HAL_UART_CLEAR_FLAG(&huart1, UART_CLEAR_OREF | UART_CLEAR_NEF | UART_CLEAR_PEF | UART_CLEAR_FEF);
@@ -539,6 +558,38 @@ static void MX_TIM16_Init(void)
 }
 
 /**
+  * @brief TIM17 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM17_Init(void)
+{
+
+  /* USER CODE BEGIN TIM17_Init 0 */
+
+  /* USER CODE END TIM17_Init 0 */
+
+  /* USER CODE BEGIN TIM17_Init 1 */
+
+  /* USER CODE END TIM17_Init 1 */
+  htim17.Instance = TIM17;
+  htim17.Init.Prescaler = 7999;
+  htim17.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim17.Init.Period = 10000;
+  htim17.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim17.Init.RepetitionCounter = 0;
+  htim17.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim17) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM17_Init 2 */
+
+  /* USER CODE END TIM17_Init 2 */
+
+}
+
+/**
   * @brief USART1 Initialization Function
   * @param None
   * @retval None
@@ -749,6 +800,12 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     stopCount = 0;
     // 指定時間経過したらタイマーを停止し、切替受付を解禁
     HAL_TIM_Base_Stop_IT(&htim16);
+  }
+  else if (htim->Instance == TIM17)
+  {
+    // TIM17の割り込み処理
+    roll = 0; // ロールモードを解除
+    // ここにTIM17の割り込み時の処理を追加する
   }
 }
 /* USER CODE END 4 */
