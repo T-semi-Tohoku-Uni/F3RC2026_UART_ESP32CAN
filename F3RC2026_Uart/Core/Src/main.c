@@ -57,6 +57,7 @@ volatile uint32_t recovery_timer = 0; // 非常停止中の1秒ウィンドウ�
 
 uint8_t TxData1[8] = {}; // 足回り基板
 uint8_t TxData2[8] = {}; // 回収機構基板
+uint8_t TxData3[8] = {}; // IMU
 
 uint8_t buffer[1] = {};
 uint8_t size = 1;
@@ -163,14 +164,11 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                     } else {
                         int8_t val0 = data[3];
                         int8_t val1 = data[5];
-                        int8_t val2 = data[2];
-
-                        val2 = -val2;
+                        int16_t val2 = data[2];
 
                         iuc[0].i8 = (val0 >= -10 && val0 <= 10) ? 0 : val0;
                         iuc[1].i8 = (val1 >= -10 && val1 <= 10) ? 0 : val1;
                         iuc[2].i8 = (val2 >= -10 && val2 <= 10) ? 0 : val2;
-
                         if (slow == 1) {
                             iuc[0].i8 /= 2;
                             iuc[1].i8 /= 2;
@@ -181,7 +179,15 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 
                         if ((data[7] >> 1 & 0x01 ) && (roll == 0)){
                           roll = 1;
-                          TxData1[3] = 1;
+                          TxData3[0] = 1;
+
+                              // 0x106を1回だけ送信
+    if (HAL_FDCAN_GetTxFifoFreeLevel(&hfdcan1) >= 1)
+    {
+        TxHeader.Identifier = 0x106;
+        HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader, TxData3);
+    }
+
                           // TIM17を初期化してスタート（ロールモード解除用）
                           HAL_TIM_Base_Stop_IT(&htim17);
                           __HAL_TIM_SET_COUNTER(&htim17, 0);
@@ -201,7 +207,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 
                         TxData1[0] = iuc[0].u8;
                         TxData1[1] = iuc[1].u8;
-                        TxData1[2] = iuc[2].u8;
+                        TxData1[2] = iuc[2].u8;  // iuc[2]の値をTxData1[2]に格納
 
                         // data配列がUART等で受信されたデータ（8バイト）だと仮定
 
